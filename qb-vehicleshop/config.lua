@@ -86,7 +86,7 @@ Config.Shops = {
         },
     },
     ['luxury'] = {
-        ['Type'] = 'managed', -- meaning a real player has to sell the car
+        ['Type'] = 'free-use', -- meaning a real player has to sell the car
         ['Zone'] = {
             ['Shape'] = {
                 vector2(-1260.6973876953, -349.21334838867),
@@ -103,7 +103,7 @@ Config.Shops = {
             ['maxZ'] = 37.516143798828,
             ['size'] = 2.75    -- size of the vehicles zones
         },
-        ['Job'] = 'cardealer', -- Name of job or none
+        ['Job'] = 'none', -- Name of job or none
         ['ShopLabel'] = 'Luxury Vehicle Shop',
         ['showBlip'] = true,   -- true or false
         ['blipSprite'] = 326,  -- Blip sprite
