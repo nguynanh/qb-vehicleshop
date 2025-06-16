@@ -1,4 +1,0 @@
-CREATE TABLE IF NOT EXISTS `vehicleshop_prices` (
-    `model` VARCHAR(50) NOT NULL PRIMARY KEY,
-    `price` INT(11) NOT NULL DEFAULT 0
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
