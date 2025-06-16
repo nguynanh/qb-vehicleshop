@@ -1,7 +1,7 @@
 -- Variables
 local QBCore = exports['qb-core']:GetCoreObject()
 local financetimer = {}
-
+local vehicleShopData = {} 
 local vehicleTypes = { -- https://docs.fivem.net/natives/?_0xA273060E
     motorcycles = 'bike',
     boats = 'boat',
@@ -79,6 +79,37 @@ AddEventHandler('playerDropped', function()
 end)
 
 -- Functions
+local function LoadShopVehicleData()
+    local result = MySQL.query.await('SELECT model, sold_count, current_price FROM shop_vehicle_data', {})
+    if result then
+        for _, v in pairs(result) do
+            vehicleShopData[v.model] = {
+                sold_count = v.sold_count,
+                current_price = v.current_price
+            }
+        end
+    end
+
+    -- Khởi tạo dữ liệu cho các xe chưa có trong DB (lần đầu tiên hoặc xe mới được thêm vào config)
+    for model, data in pairs(QBCore.Shared.Vehicles) do
+        if not vehicleShopData[model] then
+            vehicleShopData[model] = {
+                sold_count = 0,
+                current_price = data.price -- Sử dụng giá gốc từ QBCore.Shared.Vehicles
+            }
+            -- Insert new vehicle into DB
+            MySQL.insert('INSERT INTO shop_vehicle_data (model, sold_count, current_price) VALUES (?, ?, ?)', { model, 0, data.price })
+        end
+    end
+end
+
+-- Chạy khi script khởi động
+AddEventHandler('onResourceStart', function(resourceName)
+    if resourceName == GetCurrentResourceName() then
+        LoadShopVehicleData()
+    end
+end)
+
 local function round(x)
     return x >= 0 and math.floor(x + 0.5) or math.ceil(x - 0.5)
 end
@@ -119,6 +150,15 @@ local function comma_value(amount)
     return formatted
 end
 
+-- Trong các hàm cần lấy giá xe, thay vì QBCore.Shared.Vehicles[vehicle]['price'], hãy dùng:
+local function GetCurrentVehiclePrice(vehicleModel)
+    if vehicleShopData[vehicleModel] and vehicleShopData[vehicleModel].current_price then
+        return vehicleShopData[vehicleModel].current_price
+    else
+        -- Fallback to original price if somehow not found in shop data
+        return QBCore.Shared.Vehicles[vehicleModel]['price']
+    end
+end
 -- Callbacks
 QBCore.Functions.CreateCallback('qb-vehicleshop:server:getVehicles', function(source, cb)
     local src = source
@@ -217,16 +257,24 @@ RegisterNetEvent('qb-vehicleshop:server:financePaymentFull', function(data)
 end)
 
 -- Buy public vehicle outright
+-- Buy public vehicle outright
 RegisterNetEvent('qb-vehicleshop:server:buyShowroomVehicle', function(vehicle)
     local src = source
-    vehicle = vehicle.buyVehicle
     local pData = QBCore.Functions.GetPlayer(src)
     local cid = pData.PlayerData.citizenid
     local cash = pData.PlayerData.money['cash']
     local bank = pData.PlayerData.money['bank']
-    local vehiclePrice = QBCore.Shared.Vehicles[vehicle]['price']
+
+    local vehiclePrice = GetCurrentVehiclePrice(vehicle) -- Lấy giá hiện tại
     local plate = GeneratePlate()
-    if cash > tonumber(vehiclePrice) then
+
+    -- Kiểm tra giới hạn số lượng bán
+    if vehicleShopData[vehicle] and vehicleShopData[vehicle].sold_count >= 20 then
+        TriggerClientEvent('QBCore:Notify', src, Lang:t('error.vehicle_sold_out'), 'error') -- Bạn sẽ cần thêm dòng này vào locales
+        return
+    end
+
+    if cash >= tonumber(vehiclePrice) then
         MySQL.insert('INSERT INTO player_vehicles (license, citizenid, vehicle, hash, mods, plate, garage, state) VALUES (?, ?, ?, ?, ?, ?, ?, ?)', {
             pData.PlayerData.license,
             cid,
@@ -240,7 +288,13 @@ RegisterNetEvent('qb-vehicleshop:server:buyShowroomVehicle', function(vehicle)
         TriggerClientEvent('QBCore:Notify', src, Lang:t('success.purchased'), 'success')
         TriggerClientEvent('qb-vehicleshop:client:buyShowroomVehicle', src, vehicle, plate)
         pData.Functions.RemoveMoney('cash', vehiclePrice, 'vehicle-bought-in-showroom')
-    elseif bank > tonumber(vehiclePrice) then
+
+        -- Cập nhật số lượng đã bán và giá mới
+        vehicleShopData[vehicle].sold_count = vehicleShopData[vehicle].sold_count + 1
+        vehicleShopData[vehicle].current_price = math.ceil(vehiclePrice * 1.10) -- Tăng 10% so với giá hiện tại
+        MySQL.update('UPDATE shop_vehicle_data SET sold_count = ?, current_price = ? WHERE model = ?', { vehicleShopData[vehicle].sold_count, vehicleShopData[vehicle].current_price, vehicle })
+
+    elseif bank >= tonumber(vehiclePrice) then
         MySQL.insert('INSERT INTO player_vehicles (license, citizenid, vehicle, hash, mods, plate, garage, state) VALUES (?, ?, ?, ?, ?, ?, ?, ?)', {
             pData.PlayerData.license,
             cid,
@@ -254,203 +308,14 @@ RegisterNetEvent('qb-vehicleshop:server:buyShowroomVehicle', function(vehicle)
         TriggerClientEvent('QBCore:Notify', src, Lang:t('success.purchased'), 'success')
         TriggerClientEvent('qb-vehicleshop:client:buyShowroomVehicle', src, vehicle, plate)
         pData.Functions.RemoveMoney('bank', vehiclePrice, 'vehicle-bought-in-showroom')
+
+        -- Cập nhật số lượng đã bán và giá mới
+        vehicleShopData[vehicle].sold_count = vehicleShopData[vehicle].sold_count + 1
+        vehicleShopData[vehicle].current_price = math.ceil(vehiclePrice * 1.10) -- Tăng 10% so với giá hiện tại
+        MySQL.update('UPDATE shop_vehicle_data SET sold_count = ?, current_price = ? WHERE model = ?', { vehicleShopData[vehicle].sold_count, vehicleShopData[vehicle].current_price, vehicle })
+
     else
         TriggerClientEvent('QBCore:Notify', src, Lang:t('error.notenoughmoney'), 'error')
-    end
-end)
-
--- Finance public vehicle
-RegisterNetEvent('qb-vehicleshop:server:financeVehicle', function(downPayment, paymentAmount, vehicle)
-    local src = source
-    downPayment = tonumber(downPayment)
-    paymentAmount = tonumber(paymentAmount)
-    local pData = QBCore.Functions.GetPlayer(src)
-    local cid = pData.PlayerData.citizenid
-    local cash = pData.PlayerData.money['cash']
-    local bank = pData.PlayerData.money['bank']
-    local vehiclePrice = QBCore.Shared.Vehicles[vehicle]['price']
-    local timer = (Config.PaymentInterval * 60)
-    local minDown = tonumber(round((Config.MinimumDown / 100) * vehiclePrice))
-    if downPayment > vehiclePrice then return TriggerClientEvent('QBCore:Notify', src, Lang:t('error.notworth'), 'error') end
-    if downPayment < minDown then return TriggerClientEvent('QBCore:Notify', src, Lang:t('error.downtoosmall'), 'error') end
-    if paymentAmount > Config.MaximumPayments then return TriggerClientEvent('QBCore:Notify', src, Lang:t('error.exceededmax'), 'error') end
-    local plate = GeneratePlate()
-    local balance, vehPaymentAmount = calculateFinance(vehiclePrice, downPayment, paymentAmount)
-    if cash >= downPayment then
-        MySQL.insert('INSERT INTO player_vehicles (license, citizenid, vehicle, hash, mods, plate, garage, state, balance, paymentamount, paymentsleft, financetime) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)', {
-            pData.PlayerData.license,
-            cid,
-            vehicle,
-            GetHashKey(vehicle),
-            '{}',
-            plate,
-            'pillboxgarage',
-            0,
-            balance,
-            vehPaymentAmount,
-            paymentAmount,
-            timer
-        })
-        TriggerClientEvent('QBCore:Notify', src, Lang:t('success.purchased'), 'success')
-        TriggerClientEvent('qb-vehicleshop:client:buyShowroomVehicle', src, vehicle, plate)
-        pData.Functions.RemoveMoney('cash', downPayment, 'vehicle-bought-in-showroom')
-    elseif bank >= downPayment then
-        MySQL.insert('INSERT INTO player_vehicles (license, citizenid, vehicle, hash, mods, plate, garage, state, balance, paymentamount, paymentsleft, financetime) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)', {
-            pData.PlayerData.license,
-            cid,
-            vehicle,
-            GetHashKey(vehicle),
-            '{}',
-            plate,
-            'pillboxgarage',
-            0,
-            balance,
-            vehPaymentAmount,
-            paymentAmount,
-            timer
-        })
-        TriggerClientEvent('QBCore:Notify', src, Lang:t('success.purchased'), 'success')
-        TriggerClientEvent('qb-vehicleshop:client:buyShowroomVehicle', src, vehicle, plate)
-        pData.Functions.RemoveMoney('bank', downPayment, 'vehicle-bought-in-showroom')
-    else
-        TriggerClientEvent('QBCore:Notify', src, Lang:t('error.notenoughmoney'), 'error')
-    end
-end)
-
--- Sell vehicle to customer
-RegisterNetEvent('qb-vehicleshop:server:sellShowroomVehicle', function(data, playerid)
-    local src = source
-    local player = QBCore.Functions.GetPlayer(src)
-    local target = QBCore.Functions.GetPlayer(tonumber(playerid))
-
-    if not target then
-        TriggerClientEvent('QBCore:Notify', src, Lang:t('error.Invalid_ID'), 'error')
-        return
-    end
-
-    if #(GetEntityCoords(GetPlayerPed(src)) - GetEntityCoords(GetPlayerPed(target.PlayerData.source))) < 3 then
-        local cid = target.PlayerData.citizenid
-        local cash = target.PlayerData.money['cash']
-        local bank = target.PlayerData.money['bank']
-        local vehicle = data
-        local vehiclePrice = QBCore.Shared.Vehicles[vehicle]['price']
-        local commission = round(vehiclePrice * Config.Commission)
-        local plate = GeneratePlate()
-        if cash >= tonumber(vehiclePrice) then
-            MySQL.insert('INSERT INTO player_vehicles (license, citizenid, vehicle, hash, mods, plate, garage, state) VALUES (?, ?, ?, ?, ?, ?, ?, ?)', {
-                target.PlayerData.license,
-                cid,
-                vehicle,
-                GetHashKey(vehicle),
-                '{}',
-                plate,
-                'pillboxgarage',
-                0
-            })
-            TriggerClientEvent('qb-vehicleshop:client:buyShowroomVehicle', target.PlayerData.source, vehicle, plate)
-            target.Functions.RemoveMoney('cash', vehiclePrice, 'vehicle-bought-in-showroom')
-            player.Functions.AddMoney('bank', commission, 'vehicle sale commission')
-            TriggerClientEvent('QBCore:Notify', src, Lang:t('success.earned_commission', { amount = comma_value(commission) }), 'success')
-            exports['qb-banking']:AddMoney(player.PlayerData.job.name, vehiclePrice, 'Vehicle sale')
-            TriggerClientEvent('QBCore:Notify', target.PlayerData.source, Lang:t('success.purchased'), 'success')
-        elseif bank >= tonumber(vehiclePrice) then
-            MySQL.insert('INSERT INTO player_vehicles (license, citizenid, vehicle, hash, mods, plate, garage, state) VALUES (?, ?, ?, ?, ?, ?, ?, ?)', {
-                target.PlayerData.license,
-                cid,
-                vehicle,
-                GetHashKey(vehicle),
-                '{}',
-                plate,
-                'pillboxgarage',
-                0
-            })
-            TriggerClientEvent('qb-vehicleshop:client:buyShowroomVehicle', target.PlayerData.source, vehicle, plate)
-            target.Functions.RemoveMoney('bank', vehiclePrice, 'vehicle-bought-in-showroom')
-            player.Functions.AddMoney('bank', commission, 'vehicle sale commission')
-            exports['qb-banking']:AddMoney(player.PlayerData.job.name, vehiclePrice, 'Vehicle sale')
-            TriggerClientEvent('QBCore:Notify', src, Lang:t('success.earned_commission', { amount = comma_value(commission) }), 'success')
-            TriggerClientEvent('QBCore:Notify', target.PlayerData.source, Lang:t('success.purchased'), 'success')
-        else
-            TriggerClientEvent('QBCore:Notify', src, Lang:t('error.notenoughmoney'), 'error')
-        end
-    else
-        TriggerClientEvent('QBCore:Notify', src, Lang:t('error.playertoofar'), 'error')
-    end
-end)
-
--- Finance vehicle to customer
-RegisterNetEvent('qb-vehicleshop:server:sellfinanceVehicle', function(downPayment, paymentAmount, vehicle, playerid)
-    local src = source
-    local player = QBCore.Functions.GetPlayer(src)
-    local target = QBCore.Functions.GetPlayer(tonumber(playerid))
-
-    if not target then
-        TriggerClientEvent('QBCore:Notify', src, Lang:t('error.Invalid_ID'), 'error')
-        return
-    end
-
-    if #(GetEntityCoords(GetPlayerPed(src)) - GetEntityCoords(GetPlayerPed(target.PlayerData.source))) < 3 then
-        downPayment = tonumber(downPayment)
-        paymentAmount = tonumber(paymentAmount)
-        local cid = target.PlayerData.citizenid
-        local cash = target.PlayerData.money['cash']
-        local bank = target.PlayerData.money['bank']
-        local vehiclePrice = QBCore.Shared.Vehicles[vehicle]['price']
-        local timer = (Config.PaymentInterval * 60)
-        local minDown = tonumber(round((Config.MinimumDown / 100) * vehiclePrice))
-        if downPayment > vehiclePrice then return TriggerClientEvent('QBCore:Notify', src, Lang:t('error.notworth'), 'error') end
-        if downPayment < minDown then return TriggerClientEvent('QBCore:Notify', src, Lang:t('error.downtoosmall'), 'error') end
-        if paymentAmount > Config.MaximumPayments then return TriggerClientEvent('QBCore:Notify', src, Lang:t('error.exceededmax'), 'error') end
-        local commission = round(vehiclePrice * Config.Commission)
-        local plate = GeneratePlate()
-        local balance, vehPaymentAmount = calculateFinance(vehiclePrice, downPayment, paymentAmount)
-        if cash >= downPayment then
-            MySQL.insert('INSERT INTO player_vehicles (license, citizenid, vehicle, hash, mods, plate, garage, state, balance, paymentamount, paymentsleft, financetime) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)', {
-                target.PlayerData.license,
-                cid,
-                vehicle,
-                GetHashKey(vehicle),
-                '{}',
-                plate,
-                'pillboxgarage',
-                0,
-                balance,
-                vehPaymentAmount,
-                paymentAmount,
-                timer
-            })
-            TriggerClientEvent('qb-vehicleshop:client:buyShowroomVehicle', target.PlayerData.source, vehicle, plate)
-            target.Functions.RemoveMoney('cash', downPayment, 'vehicle-bought-in-showroom')
-            player.Functions.AddMoney('bank', commission, 'vehicle sale commission')
-            TriggerClientEvent('QBCore:Notify', src, Lang:t('success.earned_commission', { amount = comma_value(commission) }), 'success')
-            exports['qb-banking']:AddMoney(player.PlayerData.job.name, vehiclePrice, 'Vehicle sale')
-            TriggerClientEvent('QBCore:Notify', target.PlayerData.source, Lang:t('success.purchased'), 'success')
-        elseif bank >= downPayment then
-            MySQL.insert('INSERT INTO player_vehicles (license, citizenid, vehicle, hash, mods, plate, garage, state, balance, paymentamount, paymentsleft, financetime) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)', {
-                target.PlayerData.license,
-                cid,
-                vehicle,
-                GetHashKey(vehicle),
-                '{}',
-                plate,
-                'pillboxgarage',
-                0,
-                balance,
-                vehPaymentAmount,
-                paymentAmount,
-                timer
-            })
-            TriggerClientEvent('qb-vehicleshop:client:buyShowroomVehicle', target.PlayerData.source, vehicle, plate)
-            target.Functions.RemoveMoney('bank', downPayment, 'vehicle-bought-in-showroom')
-            player.Functions.AddMoney('bank', commission, 'vehicle sale commission')
-            TriggerClientEvent('QBCore:Notify', src, Lang:t('success.earned_commission', { amount = comma_value(commission) }), 'success')
-            exports['qb-banking']:AddMoney(player.PlayerData.job.name, vehiclePrice, 'Vehicle sale')
-            TriggerClientEvent('QBCore:Notify', target.PlayerData.source, Lang:t('success.purchased'), 'success')
-        else
-            TriggerClientEvent('QBCore:Notify', src, Lang:t('error.notenoughmoney'), 'error')
-        end
-    else
-        TriggerClientEvent('QBCore:Notify', src, Lang:t('error.playertoofar'), 'error')
     end
 end)
 
