@@ -28,11 +28,10 @@ ALTER TABLE `player_vehicles`
 ADD CONSTRAINT FK_playervehicles_players FOREIGN KEY (citizenid)
 REFERENCES `players` (citizenid) ON DELETE CASCADE ON UPDATE CASCADE;
 
-ALTER TABLE `player_vehicles`
-ADD COLUMN `balance` int(11) NOT NULL DEFAULT 0;
-ALTER TABLE `player_vehicles`
-ADD COLUMN `paymentamount` int(11) NOT NULL DEFAULT 0;
-ALTER TABLE `player_vehicles`
-ADD COLUMN `paymentsleft` int(11) NOT NULL DEFAULT 0;
-ALTER TABLE `player_vehicles`
-ADD COLUMN `financetime` int(11) NOT NULL DEFAULT 0;
+CREATE TABLE IF NOT EXISTS `vehicle_prices` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `model` varchar(50) NOT NULL,
+  `price` bigint(20) NOT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `model` (`model`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
