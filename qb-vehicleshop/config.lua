@@ -139,11 +139,6 @@ Config.Shops = {
                 defaultVehicle = 'fmj',
                 chosenVehicle = 'fmj'
             },
-            [7] = {
-                coords = vector4(-1261.1, -361.38, 36.48, 322.45),
-                defaultVehicle = 'virtue',
-                chosenVehicle = 'virtue'
-            },
         }
     },                         -- Add your next table under this comma
     ['boats'] = {
