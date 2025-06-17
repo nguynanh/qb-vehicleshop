@@ -238,6 +238,7 @@ local function createVehZones(shopName, entity)
 end
 
 -- Zones
+-- Thay thế hàm này trong client.lua
 local function createFreeUseShop(shopShape, name)
     local zone = PolyZone:Create(shopShape, {
         name = name,
@@ -250,43 +251,54 @@ local function createFreeUseShop(shopShape, name)
             insideShop = name
             CreateThread(function()
                 while insideShop do
+                    Wait(500) -- Đợi một chút để tránh spam
                     setClosestShowroomVehicle()
-                    vehicleMenu = {
-                        {
-                            isMenuHeader = true,
-                            icon = 'fa-solid fa-circle-info',
-                            header = getVehBrand():upper() .. ' ' .. getVehName():upper() .. ' - $' .. getVehPrice(),
-                        },
-                        {
-                            header = Lang:t('menus.test_header'),
-                            txt = Lang:t('menus.freeuse_test_txt'),
-                            icon = 'fa-solid fa-car-on',
-                            params = {
-                                event = 'qb-vehicleshop:client:TestDrive',
-                            }
-                        },
-                        {
-                            header = Lang:t('menus.freeuse_buy_header'),
-                            txt = Lang:t('menus.freeuse_buy_txt'),
-                            icon = 'fa-solid fa-hand-holding-dollar',
-                            params = {
-                                isServer = true,
-                                event = 'qb-vehicleshop:server:buyShowroomVehicle',
-                                args = {
-                                    buyVehicle = Config.Shops[insideShop]['ShowroomVehicles'][ClosestVehicle].chosenVehicle
+                    local currentVehicleModel = Config.Shops[insideShop]['ShowroomVehicles'][ClosestVehicle].chosenVehicle
+                    
+                    -- Hỏi server để lấy giá động
+                    QBCore.Functions.TriggerCallback('qb-vehicleshop:server:getDynamicPrice', function(dynamicPrice)
+                        if not insideShop then return end -- Kiểm tra nếu người chơi đã rời khỏi shop
+
+                        local brand = QBCore.Shared.Vehicles[currentVehicleModel]['brand']
+                        local vehName = QBCore.Shared.Vehicles[currentVehicleModel]['name']
+
+                        -- Xây dựng lại menu với giá động
+                        vehicleMenu = {
+                            {
+                                isMenuHeader = true,
+                                icon = 'fa-solid fa-circle-info',
+                                header = brand:upper() .. ' ' .. vehName:upper() .. ' - $' .. comma_value(dynamicPrice),
+                            },
+                            {
+                                header = Lang:t('menus.test_header'),
+                                txt = Lang:t('menus.freeuse_test_txt'),
+                                icon = 'fa-solid fa-car-on',
+                                params = {
+                                    event = 'qb-vehicleshop:client:TestDrive',
                                 }
-                            }
-                        },
-                        {
-                            header = Lang:t('menus.swap_header'),
-                            txt = Lang:t('menus.swap_txt'),
-                            icon = 'fa-solid fa-arrow-rotate-left',
-                            params = {
-                                event = Config.FilterByMake and 'qb-vehicleshop:client:vehMakes' or 'qb-vehicleshop:client:vehCategories',
-                            }
-                        },
-                    }
-                    Wait(1000)
+                            },
+                            {
+                                header = Lang:t('menus.freeuse_buy_header'),
+                                txt = Lang:t('menus.freeuse_buy_txt'),
+                                icon = 'fa-solid fa-hand-holding-dollar',
+                                params = {
+                                    isServer = true,
+                                    event = 'qb-vehicleshop:server:buyShowroomVehicle',
+                                    args = {
+                                        buyVehicle = currentVehicleModel
+                                    }
+                                }
+                            },
+                            {
+                                header = Lang:t('menus.swap_header'),
+                                txt = Lang:t('menus.swap_txt'),
+                                icon = 'fa-solid fa-arrow-rotate-left',
+                                params = {
+                                    event = Config.FilterByMake and 'qb-vehicleshop:client:vehMakes' or 'qb-vehicleshop:client:vehCategories',
+                                }
+                            },
+                        }
+                    end, currentVehicleModel)
                 end
             end)
         else
@@ -296,6 +308,7 @@ local function createFreeUseShop(shopShape, name)
     end)
 end
 
+-- Thay thế hàm này trong client.lua
 local function createManagedShop(shopShape, name)
     local zone = PolyZone:Create(shopShape, {
         name = name,
@@ -308,47 +321,58 @@ local function createManagedShop(shopShape, name)
             insideShop = name
             CreateThread(function()
                 while insideShop and PlayerData.job and PlayerData.job.name == Config.Shops[name]['Job'] do
+                    Wait(500) -- Đợi một chút để tránh spam
                     setClosestShowroomVehicle()
-                    vehicleMenu = {
-                        {
-                            isMenuHeader = true,
-                            icon = 'fa-solid fa-circle-info',
-                            header = getVehBrand():upper() .. ' ' .. getVehName():upper() .. ' - $' .. getVehPrice(),
-                        },
-                        {
-                            header = Lang:t('menus.test_header'),
-                            txt = Lang:t('menus.managed_test_txt'),
-                            icon = 'fa-solid fa-user-plus',
-                            params = {
-                                event = 'qb-vehicleshop:client:openIdMenu',
-                                args = {
-                                    vehicle = Config.Shops[insideShop]['ShowroomVehicles'][ClosestVehicle].chosenVehicle,
-                                    type = 'testDrive'
+                    local currentVehicleModel = Config.Shops[insideShop]['ShowroomVehicles'][ClosestVehicle].chosenVehicle
+
+                    -- Hỏi server để lấy giá động
+                    QBCore.Functions.TriggerCallback('qb-vehicleshop:server:getDynamicPrice', function(dynamicPrice)
+                        if not insideShop then return end -- Kiểm tra nếu người chơi đã rời khỏi shop
+
+                        local brand = QBCore.Shared.Vehicles[currentVehicleModel]['brand']
+                        local vehName = QBCore.Shared.Vehicles[currentVehicleModel]['name']
+
+                        -- Xây dựng lại menu với giá động
+                        vehicleMenu = {
+                            {
+                                isMenuHeader = true,
+                                icon = 'fa-solid fa-circle-info',
+                                header = brand:upper() .. ' ' .. vehName:upper() .. ' - $' .. comma_value(dynamicPrice),
+                            },
+                            {
+                                header = Lang:t('menus.test_header'),
+                                txt = Lang:t('menus.managed_test_txt'),
+                                icon = 'fa-solid fa-user-plus',
+                                params = {
+                                    event = 'qb-vehicleshop:client:openIdMenu',
+                                    args = {
+                                        vehicle = currentVehicleModel,
+                                        type = 'testDrive'
+                                    }
                                 }
-                            }
-                        },
-                        {
-                            header = Lang:t('menus.managed_sell_header'),
-                            txt = Lang:t('menus.managed_sell_txt'),
-                            icon = 'fa-solid fa-cash-register',
-                            params = {
-                                event = 'qb-vehicleshop:client:openIdMenu',
-                                args = {
-                                    vehicle = Config.Shops[insideShop]['ShowroomVehicles'][ClosestVehicle].chosenVehicle,
-                                    type = 'sellVehicle'
+                            },
+                            {
+                                header = Lang:t('menus.managed_sell_header'),
+                                txt = Lang:t('menus.managed_sell_txt'),
+                                icon = 'fa-solid fa-cash-register',
+                                params = {
+                                    event = 'qb-vehicleshop:client:openIdMenu',
+                                    args = {
+                                        vehicle = currentVehicleModel,
+                                        type = 'sellVehicle'
+                                    }
                                 }
-                            }
-                        },
-                        {
-                            header = Lang:t('menus.swap_header'),
-                            txt = Lang:t('menus.swap_txt'),
-                            icon = 'fa-solid fa-arrow-rotate-left',
-                            params = {
-                                event = Config.FilterByMake and 'qb-vehicleshop:client:vehMakes' or 'qb-vehicleshop:client:vehCategories',
-                            }
-                        },
-                    }
-                    Wait(1000)
+                            },
+                            {
+                                header = Lang:t('menus.swap_header'),
+                                txt = Lang:t('menus.swap_txt'),
+                                icon = 'fa-solid fa-arrow-rotate-left',
+                                params = {
+                                    event = Config.FilterByMake and 'qb-vehicleshop:client:vehMakes' or 'qb-vehicleshop:client:vehCategories',
+                                }
+                            },
+                        }
+                    end, currentVehicleModel)
                 end
             end)
         else

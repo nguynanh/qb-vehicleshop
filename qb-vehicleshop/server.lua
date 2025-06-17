@@ -2,6 +2,11 @@
 local QBCore = exports['qb-core']:GetCoreObject()
 local financetimer = {}
 local MAX_VEHICLE_STOCK = 20
+-- [BẮT ĐẦU] Cấu hình giá động
+-- Giá xe sẽ tăng theo phần trăm sau mỗi lần bán.
+-- Ví dụ: 0.10 có nghĩa là tăng 10%
+local PriceIncreasePercentage = 0.10 
+-- [KẾT THÚC] Cấu hình giá động
 
 local vehicleTypes = { -- https://docs.fivem.net/natives/?_0xA273060E
     motorcycles = 'bike',
@@ -118,7 +123,7 @@ end)
 
 
 -- Buy public vehicle outright
--- THAY THẾ TOÀN BỘ SỰ KIỆN NÀY
+-- SỰ KIỆN NÀY ĐÃ ĐƯỢC CẬP NHẬT ĐỂ TÍNH GIÁ THEO TỶ LỆ PHẦN TRĂM
 RegisterNetEvent('qb-vehicleshop:server:buyShowroomVehicle', function(vehicle)
     local src = source
     vehicle = vehicle.buyVehicle
@@ -126,16 +131,24 @@ RegisterNetEvent('qb-vehicleshop:server:buyShowroomVehicle', function(vehicle)
     local cid = pData.PlayerData.citizenid
     local cash = pData.PlayerData.money['cash']
     local bank = pData.PlayerData.money['bank']
-    local vehiclePrice = QBCore.Shared.Vehicles[vehicle]['price']
-    local plate = GeneratePlate()
-
-    -- [BẮT ĐẦU] Logic kiểm tra số lượng
+    
+    -- [BẮT ĐẦU] Logic kiểm tra số lượng và tính giá động
     local stock = MySQL.scalar.await('SELECT sold_count FROM vehicle_stock WHERE model = ?', { vehicle })
-    if stock and stock >= MAX_VEHICLE_STOCK then
-        TriggerClientEvent('QBCore:Notify', src, Lang:t('error.out_of_stock'), 'error')
+    if not stock then
+        stock = 0 -- Nếu xe chưa có trong bảng, coi như đã bán 0 chiếc
+    end
+
+    if stock >= MAX_VEHICLE_STOCK then
+        TriggerClientEvent('QBCore:Notify', src, 'Mẫu xe này đã hết hàng!', 'error')
         return
     end
-    -- [KẾT THÚC] Logic kiểm tra số lượng
+    
+    local basePrice = QBCore.Shared.Vehicles[vehicle]['price']
+    -- TÍNH TOÁN GIÁ MỚI THEO CÔNG THỨC LŨY THỪA
+    local dynamicPrice = basePrice * ((1 + PriceIncreasePercentage) ^ stock)
+    dynamicPrice = round(dynamicPrice) -- Làm tròn giá cuối cùng
+    local plate = GeneratePlate()
+    -- [KẾT THÚC] Logic kiểm tra số lượng và tính giá động
 
     local function completePurchase()
         MySQL.insert('INSERT INTO player_vehicles (license, citizenid, vehicle, hash, mods, plate, garage, state) VALUES (?, ?, ?, ?, ?, ?, ?, ?)', {
@@ -148,18 +161,18 @@ RegisterNetEvent('qb-vehicleshop:server:buyShowroomVehicle', function(vehicle)
             'pillboxgarage',
             0
         })
-        -- [BẮT ĐẦU] Cập nhật số lượng đã bán
+        -- Cập nhật số lượng đã bán
         MySQL.execute('INSERT INTO vehicle_stock (model, sold_count) VALUES (?, 1) ON DUPLICATE KEY UPDATE sold_count = sold_count + 1', { vehicle })
-        -- [KẾT THÚC] Cập nhật số lượng đã bán
-        TriggerClientEvent('QBCore:Notify', src, Lang:t('success.purchased'), 'success')
+        
+        TriggerClientEvent('QBCore:Notify', src, 'Chúc mừng bạn đã mua xe với giá $'..comma_value(dynamicPrice), 'success')
         TriggerClientEvent('qb-vehicleshop:client:buyShowroomVehicle', src, vehicle, plate)
     end
 
-    if cash > tonumber(vehiclePrice) then
-        pData.Functions.RemoveMoney('cash', vehiclePrice, 'vehicle-bought-in-showroom')
+    if cash >= dynamicPrice then
+        pData.Functions.RemoveMoney('cash', dynamicPrice, 'vehicle-bought-in-showroom')
         completePurchase()
-    elseif bank > tonumber(vehiclePrice) then
-        pData.Functions.RemoveMoney('bank', vehiclePrice, 'vehicle-bought-in-showroom')
+    elseif bank >= dynamicPrice then
+        pData.Functions.RemoveMoney('bank', dynamicPrice, 'vehicle-bought-in-showroom')
         completePurchase()
     else
         TriggerClientEvent('QBCore:Notify', src, Lang:t('error.notenoughmoney'), 'error')
@@ -215,4 +228,19 @@ QBCore.Commands.Add('transfervehicle', Lang:t('general.command_transfervehicle')
     else
         TriggerClientEvent('QBCore:Notify', src, Lang:t('error.buyertoopoor'), 'error')
     end
+end)
+-- Thêm vào cuối tệp server.lua
+QBCore.Functions.CreateCallback('qb-vehicleshop:server:getDynamicPrice', function(source, cb, vehicleModel)
+    local stock = MySQL.scalar.await('SELECT sold_count FROM vehicle_stock WHERE model = ?', { vehicleModel })
+    if not stock then
+        stock = 0
+    end
+    local basePrice = QBCore.Shared.Vehicles[vehicleModel]['price']
+    if not basePrice then
+        cb(nil) -- Trả về nil nếu không tìm thấy xe
+        return
+    end
+    -- Tính giá động giống như khi mua xe
+    local dynamicPrice = basePrice * ((1 + PriceIncreasePercentage) ^ stock)
+    cb(round(dynamicPrice))
 end)

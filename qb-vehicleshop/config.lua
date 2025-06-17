@@ -126,18 +126,23 @@ Config.Shops = {
             },
             [4] = {
                 coords = vector4(-1252.07, -364.2, 35.91, 56.44),
-                defaultVehicle = 'bati',
-                chosenVehicle = 'bati'
+                defaultVehicle = 'krieger',
+                chosenVehicle = 'batkriegeri'
             },
             [5] = {
                 coords = vector4(-1255.49, -365.91, 35.91, 55.63),
-                defaultVehicle = 'carbonrs',
-                chosenVehicle = 'carbonrs'
+                defaultVehicle = 'adder',
+                chosenVehicle = 'adder'
             },
             [6] = {
                 coords = vector4(-1249.21, -362.97, 35.91, 53.24),
-                defaultVehicle = 'hexer',
-                chosenVehicle = 'hexer'
+                defaultVehicle = 'fmj',
+                chosenVehicle = 'fmj'
+            },
+            [7] = {
+                coords = vector4(-1261.1, -361.38, 36.48, 322.45),
+                defaultVehicle = 'virtue',
+                chosenVehicle = 'virtue'
             },
         }
     },                         -- Add your next table under this comma
