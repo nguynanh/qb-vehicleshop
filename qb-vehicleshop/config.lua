@@ -1,4 +1,9 @@
 Config = {}
+Config.EnableAutoRotation = true -- Đặt là true để bật tính năng tự động đổi xe, false để tắt
+-- 'daily': Thay đổi vào lúc 2 giờ sáng mỗi ngày.
+-- 'interval': Thay đổi sau mỗi khoảng thời gian nhất định 
+Config.RotationMode = 'daily'-- Nếu dùng chế độ 'interval', đặt số phút giữa mỗi lần thay đổi ở đây.
+Config.RotationIntervalMinutes = 120 -- Ví dụ: xe sẽ thay đổi sau mỗi 30 phút.
 Config.UsingTarget = GetConvar('UseTarget', 'false') == 'false'
 Config.Commission = 0.10                              -- Percent that goes to sales person from a full car sale 10%               -- allow/prevent players from using /transfervehicle if financed
 Config.FilterByMake = false                           -- adds a make list before selecting category in shops
@@ -6,6 +11,7 @@ Config.SortAlphabetically = true                      -- will sort make, categor
 Config.HideCategorySelectForOne = true                -- will hide the category selection menu if a shop only sells one category of vehicle or a make has only one category
 Config.Shops = {
     ['pdm'] = {
+        enabled = true,
         ['Type'] = 'free-use', -- no player interaction is required to purchase a car
         ['Zone'] = {
             ['Shape'] = {      --polygon that surrounds the shop
@@ -62,30 +68,16 @@ Config.Shops = {
                 defaultVehicle = 'rhapsody',
                 chosenVehicle = 'rhapsody'
             },
-            [6] = {
-                coords = vector4(-43.31, -1099.02, 25.44, 52.5),
-                defaultVehicle = 'bati',
-                chosenVehicle = 'bati'
-            },
-            [7] = {
-                coords = vector4(-50.66, -1093.05, 25.44, 222.5),
-                defaultVehicle = 'bati',
-                chosenVehicle = 'bati'
-            },
-            [8] = {
-                coords = vector4(-44.28, -1102.47, 25.44, 298.5),
-                defaultVehicle = 'bati',
-                chosenVehicle = 'bati'
-            }
         },
     },
     ['luxury'] = {
+        enabled = true,
         ['Type'] = 'free-use', -- meaning a real player has to sell the car
         ['Zone'] = {
             ['Shape'] = {
                 vector2(-1260.6973876953, -349.21334838867),
                 vector2(-1268.6248779297, -352.87365722656),
-                vector2(-1274.1533203125, -358.29794311523),
+                vector2(-1274.1533203125, -358.29794311523),    
                 vector2(-1273.8425292969, -362.73715209961),
                 vector2(-1270.5701904297, -368.6716003418),
                 vector2(-1266.0561523438, -375.14080810547),
@@ -125,16 +117,11 @@ Config.Shops = {
                 chosenVehicle = 'nero'
             },
             [4] = {
-                coords = vector4(-1252.07, -364.2, 35.91, 56.44),
-                defaultVehicle = 'krieger',
-                chosenVehicle = 'batkriegeri'
-            },
-            [5] = {
                 coords = vector4(-1255.49, -365.91, 35.91, 55.63),
                 defaultVehicle = 'adder',
                 chosenVehicle = 'adder'
             },
-            [6] = {
+            [5] = {
                 coords = vector4(-1249.21, -362.97, 35.91, 53.24),
                 defaultVehicle = 'fmj',
                 chosenVehicle = 'fmj'
@@ -142,6 +129,7 @@ Config.Shops = {
         }
     },                         -- Add your next table under this comma
     ['boats'] = {
+        enabled = true,
         ['Type'] = 'free-use', -- no player interaction is required to purchase a vehicle
         ['Zone'] = {
             ['Shape'] = {      --polygon that surrounds the shop
@@ -189,6 +177,7 @@ Config.Shops = {
         },
     },
     ['air'] = {
+        enabled = false,
         ['Type'] = 'free-use', -- no player interaction is required to purchase a vehicle
         ['Zone'] = {
             ['Shape'] = {      --polygon that surrounds the shop
@@ -236,6 +225,7 @@ Config.Shops = {
         },
     },
     ['truck'] = {
+        enabled = true,
         ['Type'] = 'free-use', -- no player interaction is required to purchase a car
         ['Zone'] = {
             ['Shape'] = {      --polygon that surrounds the shop

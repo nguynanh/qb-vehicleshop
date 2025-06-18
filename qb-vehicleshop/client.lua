@@ -130,11 +130,18 @@ local function getVehBrand()
     return QBCore.Shared.Vehicles[Config.Shops[insideShop]['ShowroomVehicles'][ClosestVehicle].chosenVehicle]['brand']
 end
 
+-- DÁN ĐOẠN MÃ ĐÚNG NÀY VÀO
 local function setClosestShowroomVehicle()
     local pos = GetEntityCoords(PlayerPedId(), true)
     local current = nil
     local dist = nil
     local closestShop = insideShop
+
+    -- Dòng kiểm tra này sẽ ngăn lỗi xảy ra
+    if not closestShop or not Config.Shops[closestShop] then
+        return
+    end
+
     for id in pairs(Config.Shops[closestShop]['ShowroomVehicles']) do
         local dist2 = #(pos - vector3(Config.Shops[closestShop]['ShowroomVehicles'][id].coords.x, Config.Shops[closestShop]['ShowroomVehicles'][id].coords.y, Config.Shops[closestShop]['ShowroomVehicles'][id].coords.z))
         if current then
@@ -239,6 +246,8 @@ end
 
 -- Zones
 -- Thay thế hàm này trong client.lua
+-- DÁN TOÀN BỘ ĐOẠN MÃ NÀY VÀO FILE CỦA BẠN --
+
 local function createFreeUseShop(shopShape, name)
     local zone = PolyZone:Create(shopShape, {
         name = name,
@@ -250,174 +259,111 @@ local function createFreeUseShop(shopShape, name)
         if isPointInside then
             insideShop = name
             CreateThread(function()
-                while insideShop do
-                    Wait(500) -- Đợi một chút để tránh spam
+                while insideShop == name do -- Thay đổi: Chỉ chạy khi còn ở trong đúng shop này
+                    Wait(500)
                     setClosestShowroomVehicle()
-                    local currentVehicleModel = Config.Shops[insideShop]['ShowroomVehicles'][ClosestVehicle].chosenVehicle
-                    
-                    -- Hỏi server để lấy giá động
-                    QBCore.Functions.TriggerCallback('qb-vehicleshop:server:getDynamicPrice', function(dynamicPrice)
-                        if not insideShop then return end -- Kiểm tra nếu người chơi đã rời khỏi shop
 
-                        local brand = QBCore.Shared.Vehicles[currentVehicleModel]['brand']
-                        local vehName = QBCore.Shared.Vehicles[currentVehicleModel]['name']
-
-                        -- Xây dựng lại menu với giá động
-                        vehicleMenu = {
-                            {
-                                isMenuHeader = true,
-                                icon = 'fa-solid fa-circle-info',
-                                header = brand:upper() .. ' ' .. vehName:upper() .. ' - $' .. comma_value(dynamicPrice),
-                            },
-                            {
-                                header = Lang:t('menus.test_header'),
-                                txt = Lang:t('menus.freeuse_test_txt'),
-                                icon = 'fa-solid fa-car-on',
-                                params = {
-                                    event = 'qb-vehicleshop:client:TestDrive',
+                    if Config.Shops[insideShop] and Config.Shops[insideShop]['ShowroomVehicles'][ClosestVehicle] then
+                        local currentVehicleModel = Config.Shops[insideShop]['ShowroomVehicles'][ClosestVehicle].chosenVehicle
+                        if currentVehicleModel and QBCore.Shared.Vehicles[currentVehicleModel] then
+                            QBCore.Functions.TriggerCallback('qb-vehicleshop:server:getDynamicPrice', function(data)
+                                if not insideShop or not data or not QBCore.Shared.Vehicles[currentVehicleModel] then return end
+                                local brand = QBCore.Shared.Vehicles[currentVehicleModel]['brand']
+                                local vehName = QBCore.Shared.Vehicles[currentVehicleModel]['name']
+                                local stockMessage = ' | Kho: ' .. data.stock .. '/' .. 20 -- Thêm chuỗi hiển thị số lượng
+                                vehicleMenu = {
+                                    {
+                                        isMenuHeader = true,
+                                        icon = 'fa-solid fa-circle-info',
+                                        header = brand:upper() .. ' ' .. vehName:upper() .. ' - Giá: $' .. comma_value(data.price) .. stockMessage,
+                                    },
+                                    {
+                                        header = Lang:t('menus.test_header'),
+                                        txt = Lang:t('menus.freeuse_test_txt'),
+                                        icon = 'fa-solid fa-car-on',
+                                        params = { event = 'qb-vehicleshop:client:TestDrive' }
+                                    },
+                                    {
+                                        header = Lang:t('menus.freeuse_buy_header'),
+                                        txt = Lang:t('menus.freeuse_buy_txt'),
+                                        icon = 'fa-solid fa-hand-holding-dollar',
+                                        params = {
+                                            event = 'qb-vehicleshop:client:confirmPurchase',
+                                            args = { vehicleModel = currentVehicleModel }
+                                        }
+                                    },
                                 }
-                            },
-                            {
-                                header = Lang:t('menus.freeuse_buy_header'),
-                                txt = Lang:t('menus.freeuse_buy_txt'),
-                                icon = 'fa-solid fa-hand-holding-dollar',
-                                params = {
-                                    isServer = true,
-                                    event = 'qb-vehicleshop:server:buyShowroomVehicle',
-                                    args = {
-                                        buyVehicle = currentVehicleModel
-                                    }
-                                }
-                            },
-                            {
-                                header = Lang:t('menus.swap_header'),
-                                txt = Lang:t('menus.swap_txt'),
-                                icon = 'fa-solid fa-arrow-rotate-left',
-                                params = {
-                                    event = Config.FilterByMake and 'qb-vehicleshop:client:vehMakes' or 'qb-vehicleshop:client:vehCategories',
-                                }
-                            },
-                        }
-                    end, currentVehicleModel)
+                            end, currentVehicleModel)
+                        end
+                    end
                 end
             end)
         else
-            insideShop = nil
-            ClosestVehicle = 1
+            if insideShop == name then -- Chỉ reset khi rời khỏi đúng shop này
+                insideShop = nil
+                ClosestVehicle = 1
+            end
         end
     end)
 end
 
--- Thay thế hàm này trong client.lua
-local function createManagedShop(shopShape, name)
-    local zone = PolyZone:Create(shopShape, {
-        name = name,
-        minZ = shopShape.minZ,
-        maxZ = shopShape.maxZ,
-    })
-
-    zone:onPlayerInOut(function(isPointInside)
-        if isPointInside then
-            insideShop = name
-            CreateThread(function()
-                while insideShop and PlayerData.job and PlayerData.job.name == Config.Shops[name]['Job'] do
-                    Wait(500) -- Đợi một chút để tránh spam
-                    setClosestShowroomVehicle()
-                    local currentVehicleModel = Config.Shops[insideShop]['ShowroomVehicles'][ClosestVehicle].chosenVehicle
-
-                    -- Hỏi server để lấy giá động
-                    QBCore.Functions.TriggerCallback('qb-vehicleshop:server:getDynamicPrice', function(dynamicPrice)
-                        if not insideShop then return end -- Kiểm tra nếu người chơi đã rời khỏi shop
-
-                        local brand = QBCore.Shared.Vehicles[currentVehicleModel]['brand']
-                        local vehName = QBCore.Shared.Vehicles[currentVehicleModel]['name']
-
-                        -- Xây dựng lại menu với giá động
-                        vehicleMenu = {
-                            {
-                                isMenuHeader = true,
-                                icon = 'fa-solid fa-circle-info',
-                                header = brand:upper() .. ' ' .. vehName:upper() .. ' - $' .. comma_value(dynamicPrice),
-                            },
-                            {
-                                header = Lang:t('menus.test_header'),
-                                txt = Lang:t('menus.managed_test_txt'),
-                                icon = 'fa-solid fa-user-plus',
-                                params = {
-                                    event = 'qb-vehicleshop:client:openIdMenu',
-                                    args = {
-                                        vehicle = currentVehicleModel,
-                                        type = 'testDrive'
-                                    }
-                                }
-                            },
-                            {
-                                header = Lang:t('menus.managed_sell_header'),
-                                txt = Lang:t('menus.managed_sell_txt'),
-                                icon = 'fa-solid fa-cash-register',
-                                params = {
-                                    event = 'qb-vehicleshop:client:openIdMenu',
-                                    args = {
-                                        vehicle = currentVehicleModel,
-                                        type = 'sellVehicle'
-                                    }
-                                }
-                            },
-                            {
-                                header = Lang:t('menus.swap_header'),
-                                txt = Lang:t('menus.swap_txt'),
-                                icon = 'fa-solid fa-arrow-rotate-left',
-                                params = {
-                                    event = Config.FilterByMake and 'qb-vehicleshop:client:vehMakes' or 'qb-vehicleshop:client:vehCategories',
-                                }
-                            },
-                        }
-                    end, currentVehicleModel)
-                end
-            end)
-        else
-            insideShop = nil
-            ClosestVehicle = 1
-        end
-    end)
-end
-
+-- Thay thế toàn bộ hàm Init() cũ bằng hàm mới này
+-- Thay thế toàn bộ hàm Init() cũ bằng hàm mới này
 function Init()
     Initialized = true
     CreateThread(function()
+        while QBCore.Shared.Vehicles == nil or next(QBCore.Shared.Vehicles) == nil do
+            Wait(500)
+        end
+
+        -- Tạo Zone cho các cửa hàng được bật
         for name, shop in pairs(Config.Shops) do
-            if shop['Type'] == 'free-use' then
-                createFreeUseShop(shop['Zone']['Shape'], name)
-            elseif shop['Type'] == 'managed' then
-                createManagedShop(shop['Zone']['Shape'], name)
-            end
-         --   if shop['FinanceZone'] then createFinanceZone(shop['FinanceZone'], name) end
-        end
-    end)
-    CreateThread(function()
-        for k in pairs(Config.Shops) do
-            for i = 1, #Config.Shops[k]['ShowroomVehicles'] do
-                local model = GetHashKey(Config.Shops[k]['ShowroomVehicles'][i].defaultVehicle)
-                RequestModel(model)
-                while not HasModelLoaded(model) do
-                    Wait(0)
+            if shop.enabled then
+                if shop['Type'] == 'free-use' then
+                    createFreeUseShop(shop['Zone']['Shape'], name)
                 end
-                local veh = CreateVehicle(model, Config.Shops[k]['ShowroomVehicles'][i].coords.x, Config.Shops[k]['ShowroomVehicles'][i].coords.y, Config.Shops[k]['ShowroomVehicles'][i].coords.z, false, false)
-                SetModelAsNoLongerNeeded(model)
-                SetVehicleOnGroundProperly(veh)
-                SetEntityInvincible(veh, true)
-                SetVehicleDirtLevel(veh, 0.0)
-                SetVehicleDoorsLocked(veh, 3)
-                SetEntityHeading(veh, Config.Shops[k]['ShowroomVehicles'][i].coords.w)
-                FreezeEntityPosition(veh, true)
-                SetVehicleNumberPlateText(veh, 'BUY ME')
-                if Config.UsingTarget then createVehZones(k, veh) end
             end
-            if not Config.UsingTarget then createVehZones(k) end
         end
+
+        -- Tạo xe trưng bày cho các cửa hàng được bật
+        for k, shopData in pairs(Config.Shops) do
+            if shopData.enabled then
+                for i = 1, #shopData.ShowroomVehicles do
+                    local vehicleInfo = shopData.ShowroomVehicles[i]
+                    local modelName = vehicleInfo.defaultVehicle
+                    local modelHash = GetHashKey(modelName)
+                    if modelHash ~= 0 then
+                        RequestModel(modelHash)
+                        local timeout = 5000
+                        local startTime = GetGameTimer()
+                        while not HasModelLoaded(modelHash) and (GetGameTimer() - startTime) < timeout do
+                            Wait(50)
+                        end
+                        if HasModelLoaded(modelHash) then
+                            local veh = CreateVehicle(modelHash, vehicleInfo.coords.x, vehicleInfo.coords.y, vehicleInfo.coords.z, false, false)
+                            SetModelAsNoLongerNeeded(modelHash)
+                            SetVehicleOnGroundProperly(veh)
+                            SetEntityInvincible(veh, true)
+                            SetVehicleDirtLevel(veh, 0.0)
+                            SetVehicleDoorsLocked(veh, 3)
+                            SetEntityHeading(veh, vehicleInfo.coords.w)
+                            FreezeEntityPosition(veh, true)
+                            SetVehicleNumberPlateText(veh, 'BUY ME')
+                            if Config.UsingTarget then createVehZones(k, veh) end
+                        else
+                            print(('[^1ERROR^7] [VehicleShop Client] Model xe "%s" cho cua hang "%s" khong the tai duoc (timeout).'):format(modelName, k))
+                        end
+                    else
+                        print(('[^1ERROR^7] [VehicleShop Client] Model xe "%s" cho cua hang "%s" KHONG TON TAI.'):format(modelName, k))
+                    end
+                end
+                if not Config.UsingTarget then createVehZones(k) end
+            end
+        end
+
+        TriggerServerEvent('qb-vehicleshop:server:clientReadyForState')
     end)
 end
-
 -- Events
 RegisterNetEvent('qb-vehicleshop:client:homeMenu', function()
     exports['qb-menu']:openMenu(vehicleMenu)
@@ -510,181 +456,6 @@ RegisterNetEvent('qb-vehicleshop:client:TestDriveReturn', function()
     end
 end)
 
-RegisterNetEvent('qb-vehicleshop:client:vehCategories', function(data)
-    local catmenu = {}
-    local firstvalue = nil
-    local categoryMenu = {
-        {
-            header = Lang:t('menus.goback_header'),
-            icon = 'fa-solid fa-angle-left',
-            params = {
-                event = Config.FilterByMake and 'qb-vehicleshop:client:vehMakes' or 'qb-vehicleshop:client:homeMenu'
-            }
-        }
-    }
-    for k, v in pairs(QBCore.Shared.Vehicles) do
-        if type(QBCore.Shared.Vehicles[k]['shop']) == 'table' then
-            for _, shop in pairs(QBCore.Shared.Vehicles[k]['shop']) do
-                if shop == insideShop and (not Config.FilterByMake or QBCore.Shared.Vehicles[k]['brand'] == data.make) then
-                    catmenu[v.category] = v.category
-                    if firstvalue == nil then
-                        firstvalue = v.category
-                    end
-                end
-            end
-        elseif QBCore.Shared.Vehicles[k]['shop'] == insideShop and (not Config.FilterByMake or QBCore.Shared.Vehicles[k]['brand'] == data.make) then
-            catmenu[v.category] = v.category
-            if firstvalue == nil then
-                firstvalue = v.category
-            end
-        end
-    end
-    if Config.HideCategorySelectForOne and tablelength(catmenu) == 1 then
-        TriggerEvent('qb-vehicleshop:client:openVehCats', { catName = firstvalue, make = Config.FilterByMake and data.make, onecat = true })
-        return
-    end
-    for k, v in pairs(catmenu) do
-        categoryMenu[#categoryMenu + 1] = {
-            header = v,
-            icon = 'fa-solid fa-circle',
-            params = {
-                event = 'qb-vehicleshop:client:openVehCats',
-                args = {
-                    catName = k,
-                }
-            }
-        }
-    end
-    exports['qb-menu']:openMenu(categoryMenu, Config.SortAlphabetically, true)
-end)
-
-RegisterNetEvent('qb-vehicleshop:client:openVehCats', function(data)
-    local vehMenu = {
-        {
-            header = Lang:t('menus.goback_header'),
-            icon = 'fa-solid fa-angle-left',
-            params = {
-                event = 'qb-vehicleshop:client:vehCategories',
-                args = {
-                    make = data.make
-                }
-            }
-        }
-    }
-    if data.onecat == true then
-        vehMenu[1].params = {
-            event = 'qb-vehicleshop:client:vehMakes'
-        }
-    end
-    for k, v in pairs(QBCore.Shared.Vehicles) do
-        if QBCore.Shared.Vehicles[k]['category'] == data.catName then
-            if type(QBCore.Shared.Vehicles[k]['shop']) == 'table' then
-                for _, shop in pairs(QBCore.Shared.Vehicles[k]['shop']) do
-                    if shop == insideShop then
-                        vehMenu[#vehMenu + 1] = {
-                            header = v.name,
-                            txt = Lang:t('menus.veh_price') .. v.price,
-                            icon = 'fa-solid fa-car-side',
-                            params = {
-                                isServer = true,
-                                event = 'qb-vehicleshop:server:swapVehicle',
-                                args = {
-                                    toVehicle = v.model,
-                                    ClosestVehicle = ClosestVehicle,
-                                    ClosestShop = insideShop
-                                }
-                            }
-                        }
-                    end
-                end
-            elseif QBCore.Shared.Vehicles[k]['shop'] == insideShop then
-                vehMenu[#vehMenu + 1] = {
-                    header = v.name,
-                    txt = Lang:t('menus.veh_price') .. v.price,
-                    icon = 'fa-solid fa-car-side',
-                    params = {
-                        isServer = true,
-                        event = 'qb-vehicleshop:server:swapVehicle',
-                        args = {
-                            toVehicle = v.model,
-                            ClosestVehicle = ClosestVehicle,
-                            ClosestShop = insideShop
-                        }
-                    }
-                }
-            end
-        end
-    end
-    exports['qb-menu']:openMenu(vehMenu, Config.SortAlphabetically, true)
-end)
-
-RegisterNetEvent('qb-vehicleshop:client:vehMakes', function()
-    local makmenu = {}
-    local makeMenu = {
-        {
-            header = Lang:t('menus.goback_header'),
-            icon = 'fa-solid fa-angle-left',
-            params = {
-                event = 'qb-vehicleshop:client:homeMenu'
-            }
-        }
-    }
-    for k, v in pairs(QBCore.Shared.Vehicles) do
-        if type(QBCore.Shared.Vehicles[k]['shop']) == 'table' then
-            for _, shop in pairs(QBCore.Shared.Vehicles[k]['shop']) do
-                if shop == insideShop then
-                    makmenu[v.brand] = v.brand
-                end
-            end
-        elseif QBCore.Shared.Vehicles[k]['shop'] == insideShop then
-            makmenu[v.brand] = v.brand
-        end
-    end
-    for _, v in pairs(makmenu) do
-        makeMenu[#makeMenu + 1] = {
-            header = v,
-            icon = 'fa-solid fa-circle',
-            params = {
-                event = 'qb-vehicleshop:client:vehCategories',
-                args = {
-                    make = v
-                }
-            }
-        }
-    end
-    exports['qb-menu']:openMenu(makeMenu, Config.SortAlphabetically, true)
-end)
-
-
-RegisterNetEvent('qb-vehicleshop:client:swapVehicle', function(data)
-    local shopName = data.ClosestShop
-    if Config.Shops[shopName]['ShowroomVehicles'][data.ClosestVehicle].chosenVehicle ~= data.toVehicle then
-        local closestVehicle, closestDistance = QBCore.Functions.GetClosestVehicle(vector3(Config.Shops[shopName]['ShowroomVehicles'][data.ClosestVehicle].coords.x, Config.Shops[shopName]['ShowroomVehicles'][data.ClosestVehicle].coords.y, Config.Shops[shopName]['ShowroomVehicles'][data.ClosestVehicle].coords.z))
-        if closestVehicle == 0 then return end
-        if closestDistance < 5 then DeleteEntity(closestVehicle) end
-        while DoesEntityExist(closestVehicle) do
-            Wait(50)
-        end
-        Config.Shops[shopName]['ShowroomVehicles'][data.ClosestVehicle].chosenVehicle = data.toVehicle
-        local model = GetHashKey(data.toVehicle)
-        RequestModel(model)
-        while not HasModelLoaded(model) do
-            Wait(50)
-        end
-        local veh = CreateVehicle(model, Config.Shops[shopName]['ShowroomVehicles'][data.ClosestVehicle].coords.x, Config.Shops[shopName]['ShowroomVehicles'][data.ClosestVehicle].coords.y, Config.Shops[shopName]['ShowroomVehicles'][data.ClosestVehicle].coords.z, false, false)
-        while not DoesEntityExist(veh) do
-            Wait(50)
-        end
-        SetModelAsNoLongerNeeded(model)
-        SetVehicleOnGroundProperly(veh)
-        SetEntityInvincible(veh, true)
-        SetEntityHeading(veh, Config.Shops[shopName]['ShowroomVehicles'][data.ClosestVehicle].coords.w)
-        SetVehicleDoorsLocked(veh, 3)
-        FreezeEntityPosition(veh, true)
-        SetVehicleNumberPlateText(veh, 'BUY ME')
-        if Config.UsingTarget then createVehZones(shopName, veh) end
-    end
-end)
 
 RegisterNetEvent('qb-vehicleshop:client:buyShowroomVehicle', function(vehicle, plate)
     tempShop = insideShop -- temp hacky way of setting the shop because it changes after the callback has returned since you are outside the zone
@@ -727,16 +498,88 @@ end)
 -- Threads
 CreateThread(function()
     for k, v in pairs(Config.Shops) do
-        if v.showBlip then
-            local Dealer = AddBlipForCoord(Config.Shops[k]['Location'])
-            SetBlipSprite(Dealer, Config.Shops[k]['blipSprite'])
+        if v.enabled and v.showBlip then -- Thêm điều kiện v.enabled
+            local Dealer = AddBlipForCoord(v.Location)
+            SetBlipSprite(Dealer, v.blipSprite)
             SetBlipDisplay(Dealer, 4)
             SetBlipScale(Dealer, 0.70)
             SetBlipAsShortRange(Dealer, true)
-            SetBlipColour(Dealer, Config.Shops[k]['blipColor'])
+            SetBlipColour(Dealer, v.blipColor)
             BeginTextCommandSetBlipName('STRING')
-            AddTextComponentSubstringPlayerName(Config.Shops[k]['ShopLabel'])
+            AddTextComponentSubstringPlayerName(v.ShopLabel)
             EndTextCommandSetBlipName(Dealer)
         end
     end
+end)
+-- [BẮT ĐẦU] Logic nhận sự kiện đổi xe tự động (Sửa lỗi qb-target)
+RegisterNetEvent('qb-vehicleshop:client:autoSwapVehicle', function(shopName, slotId, newVehicleModel)
+    -- Kiểm tra xem cửa hàng và vị trí có tồn tại không
+    if not Config.Shops[shopName] or not Config.Shops[shopName]['ShowroomVehicles'][slotId] then return end
+
+    -- Chỉ đổi nếu xe mới khác xe cũ
+    if Config.Shops[shopName]['ShowroomVehicles'][slotId].chosenVehicle ~= newVehicleModel then
+        local slotCoords = Config.Shops[shopName]['ShowroomVehicles'][slotId].coords
+        local closestVehicle, closestDistance = QBCore.Functions.GetClosestVehicle(vector3(slotCoords.x, slotCoords.y, slotCoords.z))
+
+        if closestVehicle ~= 0 and closestDistance < 5.0 then
+            -- Đã xóa dòng lệnh gây lỗi 'RemoveEntity' ở đây. Chỉ cần xóa xe là đủ.
+            DeleteEntity(closestVehicle)
+        end
+
+        Config.Shops[shopName]['ShowroomVehicles'][slotId].chosenVehicle = newVehicleModel
+        local modelHash = GetHashKey(newVehicleModel)
+
+        RequestModel(modelHash)
+        while not HasModelLoaded(modelHash) do
+            Wait(50)
+        end
+
+        local newVeh = CreateVehicle(modelHash, slotCoords.x, slotCoords.y, slotCoords.z, false, false)
+        SetModelAsNoLongerNeeded(modelHash)
+        SetVehicleOnGroundProperly(newVeh)
+        SetEntityInvincible(newVeh, true)
+        SetEntityHeading(newVeh, slotCoords.w)
+        SetVehicleDoorsLocked(newVeh, 3)
+        FreezeEntityPosition(newVeh, true)
+        SetVehicleNumberPlateText(newVeh, 'BUY ME')
+
+        -- Gắn lại vùng tương tác/target cho xe mới
+        if Config.UsingTarget then
+            createVehZones(shopName, newVeh)
+        end
+    end
+end)
+-- [KẾT THÚC] Logic nhận sự kiện đổi xe tự động (Sửa lỗi qb-target)
+RegisterNetEvent('qb-vehicleshop:client:confirmPurchase', function(data)
+    local vehicleModel = data.vehicleModel
+    local vehicleName = QBCore.Shared.Vehicles[vehicleModel] and QBCore.Shared.Vehicles[vehicleModel]['name'] or 'Xe không rõ'
+    local vehiclePrice = QBCore.Shared.Vehicles[vehicleModel] and QBCore.Shared.Vehicles[vehicleModel]['price'] or 'Không rõ'
+
+    exports['qb-menu']:openMenu({
+        {
+            isMenuHeader = true,
+            header = 'Xác nhận giao dịch',
+            txt = 'Bạn có muốn mua ' .. vehicleName .. ' không?',
+        },
+        {
+            header = 'Đồng ý',
+            txt = 'Giá: $'..tostring(vehiclePrice),
+            icon = 'fa-solid fa-check',
+            params = {
+                isServer = true,
+                event = 'qb-vehicleshop:server:buyShowroomVehicle',
+                args = {
+                    buyVehicle = vehicleModel
+                }
+            }
+        },
+        {
+            header = 'Từ chối',
+            txt = 'Quay lại cửa hàng',
+            icon = 'fa-solid fa-xmark',
+            params = {
+                event = 'qb-vehicleshop:client:homeMenu' -- Quay về menu chính của cửa hàng
+            }
+        }
+    })
 end)
