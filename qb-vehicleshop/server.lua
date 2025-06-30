@@ -449,3 +449,45 @@ CreateThread(function()
     end
 end)
 -- [KẾT THÚC] Logic thay đổi xe vào 2 giờ sáng hàng ngày
+-- Thêm vào cuối file /qb-vehicleshop/server.lua
+exports('GetShowroomState', function()
+    return ShowroomState
+end)
+-- Thêm vào /qb-vehicleshop/server.lua cùng với export GetShowroomState
+exports('getVehiclePrice', function(vehicleModel)
+    local sold_count = MySQL.scalar.await('SELECT sold_count FROM vehicle_stock WHERE model = ?', { vehicleModel })
+    if not sold_count then
+        sold_count = 0
+    end
+    local basePrice = QBCore.Shared.Vehicles[vehicleModel] and QBCore.Shared.Vehicles[vehicleModel]['price']
+    if not basePrice then
+        return nil
+    end
+    local dynamicPrice = basePrice * ((1 + PriceIncreasePercentage) ^ sold_count)
+    return round(dynamicPrice)
+end)
+-- Thêm vào cuối file /qb-vehicleshop/server.lua
+
+-- Export này đã có từ lần trước
+exports('GetShowroomState', function()
+    return ShowroomState
+end)
+
+-- THÊM MỚI EXPORT NÀY
+exports('GetShowroomConfig', function()
+    return Config.Shops
+end)
+
+-- Export này cũng đã có từ lần trước
+exports('getVehiclePrice', function(vehicleModel)
+    local sold_count = MySQL.scalar.await('SELECT sold_count FROM vehicle_stock WHERE model = ?', { vehicleModel })
+    if not sold_count then
+        sold_count = 0
+    end
+    local basePrice = QBCore.Shared.Vehicles[vehicleModel] and QBCore.Shared.Vehicles[vehicleModel]['price']
+    if not basePrice then
+        return nil
+    end
+    local dynamicPrice = basePrice * ((1 + PriceIncreasePercentage) ^ sold_count)
+    return round(dynamicPrice)
+end)
