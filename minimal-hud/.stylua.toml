@@ -1,0 +1,4 @@
+syntax = "Lua54"
+column_width = 2000
+indent_type = "Spaces"
+indent_width = 4
